@@ -1,0 +1,511 @@
+---
+title: 'Statistical analysis: The Interval Asymmetry Index and /t/ salience'
+author: "Ernesto R. Gutiérrez Topete"
+date: "April 1, 2025"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+  # pdf_document:
+  #   toc: true
+  #   toc_depth: 3
+  #   latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, 
+  message=FALSE, 
+  warning = FALSE,
+  fig.width = 10,
+  fig.height = 5,
+  comment = ">>"
+)
+
+# Specify path for output directory
+output_dir <- "images"
+
+# Check if the directory exists and create it if necessary
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir)   # Create the output directory to store plots
+}
+```
+
+# Project Description
+
+This project documents the statistical analysis accompanying a study of Spanish--English bilinguals’ voice onset time (VOT) production in code-switching contexts. Prior research shows that bilingual speech can exhibit phonetic convergence or divergence across languages, shaped by both phonetic and social factors (e.g., Flege & Eefting, 1987; Bullock & Toribio, 2009; Podesva, 2011; Erker, 2022). Building on this work, the current study investigates VOT patterns for voiceless stops (/p/, /t/, /k/) across languages and interactional contexts, with a particular focus on unexpected patterns for /t/ in code-switching environments.
+
+In addition to the mixed-effects modeling, this study also introduces the **Interval Asymmetry Index (IAI)**, a novel statistical measure developed to quantify deviations from the expected linear relationship among categories with gradual increases along a continuum (e.g., VOT). In this case, the IAI provides a continuous index per speaker of whether /t/ patterns align with or diverge from the typical place-of-articulation linear trend. By combining group-level modeling with this individualized metric, the analysis offers new insights into how both phonetic and social salience contribute to systematic variability in bilingual speech.
+
+All analyses are conducted in R (R Core Team, 2025) and follow a reproducible and transparent workflow. The documentation guides readers through every step:
+
+1.  **Data import and verification:** The [**Bilingual Language Profile** (*BLP*)](https://blp.coerll.utexas.edu) survey data and VOT production measurements are loaded, inspected, and structured for analysis.
+2.  **Descriptive statistics:** Key summary measures for both dominance scores BLP and VOT distributions are calculated to provide an overview of central tendency, variability, and range.
+3.  **Normality checks and visualization:** The distribution of BLP dominance scores is evaluated via the Shapiro--Wilk test and visualized with histograms and Q--Q plots to assess whether parametric modeling assumptions hold.
+4.  **VOT distribution visualization:** Boxplots illustrate VOT patterns across stop consonants and languages, offering a visual baseline for further modeling.
+5.  **Mixed-effects modeling of VOT:** A maximal linear mixed-effects model is initially fit to predict VOT from stop consonant, language, and their interaction, with random intercepts and slopes for subjects and lexical items. When singular fits are encountered, principled simplification is conducted using the `buildmer` package to obtain a stable, interpretable model.
+6.  **Interval Asymmetry Index (IAI):** A novel metric is computed for each speaker to quantify deviations of /t/ from the expected linear VOT progression, providing a continuous measure of asymmetry along the /p/--/t/--/k/ continuum.
+7.  **IAI visualization:** Histograms display the distribution of IAI values per language, highlighting language-specific patterns in /t/ realization relative to the expected midpoint.
+8.  **Mixed-effects modeling of IAI:** A linear mixed-effects model predicts IAI using normalized linguistic background and cultural identity measures, accounting for subject- and language-level variability. Random slopes are omitted due to limited observations per subject, ensuring model convergence and accurate effect estimation.
+
+This document combines thorough data processing, statistical modeling, and visualization steps, providing a fully reproducible workflow. The analysis leverages modern R packages for data manipulation ([`dplyr`](https://dplyr.tidyverse.org/), Wickham et al., 2023), visualization ([`ggplot2`](https://ggplot2.tidyverse.org/,%20Wickham,%202016), [`patchwork`](https://patchwork.data-imaginist.com/,%20Pedersen,%202020), and [`showtext`](https://cran.r-project.org/web/packages/showtext/index.html)), and mixed-effects modeling and post-hoc analysis with ([`lme4`](https://cran.r-project.org/package=lme4,%20Bates%20et%20al.,%202015), [`lmerTest`](https://cran.r-project.org/package=lmerTest,%20Kuznetsova%20et%20al.,%202017), [`buildmer`](https://cran.r-project.org/package=buildmer,%20Voeten,%202020), and [`emeans`](https://cran.r-project.org/web/packages/emmeans/index.html)) to ensure reproducibility and clarity. By integrating both group-level modeling and individualized metrics, the analysis sheds light on the phonetic and social factors shaping bilingual speech.
+
+The complete workflow is scripted to facilitate audit, replication, and extension by other researchers. All code, analyses, and visualizations were prepared by [**Ernesto R. Gutiérrez Topete**](https://www.pomona.edu/directory/people/ernesto-gutierrez-topete) and are publicly available, in conjunction with the data.
+
+# Data Processing and Inspection
+
+## Libraries
+
+This section loads the R packages required for data manipulation, visualization, statistical modeling, and reproducible reporting. Each package is briefly described in terms of its role in the current workflow.
+
+-   `tidyverse`: A collection of R packages designed for data science, including `dplyr` (data wrangling) and `ggplot2` (visualization).
+-   `patchwork`: Combines multiple `ggplot2` plots into a single layout (e.g., for side-by-side comparisons).
+-   `showtext`: Provides font formatting functionality for graphs in R.
+-   `lme4`: Fits linear and generalized linear mixed-effects models via maximum likelihood.
+-   `lmerTest`: Provides *p*-values and significance testing for models fitted with `lme4`.
+-   `buildmer`: Automates stepwise simplification and selection of mixed-effects model structures.
+-   `emmeans`: Performs post-hoc analyses for independent variables with multiple levels and their interactions.
+
+```{r load-libraries}
+# Load the libraries
+library(tidyverse)   # Provide data manipulation (dplyr) and visualization (ggplot2)
+library(patchwork)   # Combine multiple ggplot2 plots in a single figure
+library(showtext)    # Produce font format options for text in plots and graphs
+library(lme4)        # Fit linear mixed-effects models (lmer)
+library(lmerTest)    # Add p-values and tests for fixed effects in lme4 models
+library(buildmer)    # Perform stepwise elimination and model selection for mixed-effects models
+library(emmeans)     # Analyzes estimated marginal means for fitted models
+```
+
+## Data
+
+This section imports the two data sets used in the analysis: (1) the BLP survey responses, which measure participants' linguistic profiles: linguistic history, usage, proficiency, and attitudes (Birdsong, Gertken & Amengual, 2012) and (2) the *VOT production* data set, containing VOT measurements during four code-switching tasks for the 60 Spanish-English bilingual participants. After loading the files, it previews their contents and inspects their structure to confirm that the data have been imported successfully and that the variables are correctly formatted, to ensure that subsequent processing and analysis steps are based on properly loaded and verified data. This documentation file assumes a structure where the data are stored in a directory called `data/`.
+
+```{r load-data}
+# Load the BLP and VOT data sets
+blp_df <- read.csv("data/blp_data.csv", header = TRUE)   # Load BLP survey data
+vot_df <- read.csv("data/vot_data.csv", header = TRUE)   # Load VOT production data
+
+# Preview the first few rows of the BLP and VOT data sets (commented out for clarity)
+# head(blp_df)   # Display first rows of BLP data
+# head(vot_df)   # Display first rows of VOT data
+
+# Inspect the structure of the BLP and VOT data sets (commented out for clarity)
+# str(blp_df)   # Display structure of BLP data
+# str(vot_df)   # Display structure of VOT data
+```
+
+## Dominance Scores Normality Test
+
+This section conducts a normality test on the dominance scores produced by the BLP. Specifically, the analysis applies the **Shapiro--Wilk test** using the R function `shapiro.test()`, which evaluates whether the data distribution seriously deviates from normality. In this context, the null hypothesis (*H*~0~) states that the data are drawn from a normally distributed population, whereas the alternative hypothesis (*H*~1~) posits that the data significantly depart from normality. The output of this test will provide a *W* statistic and *p*-value to assess normality; a *p*-value greater than 0.05 suggests that the data do not significantly deviate from normality (i.e., *H*~0~ cannot be rejected), while a *p*-value less than 0.05 indicates that the normality assumption is violated (i.e., *H*~0~ is rejected in favor of *H*~1~).
+
+```{r normality-test}
+# Perform Shapiro-Wilk test on dominance scores from the BLP
+shapiro.test(blp_df$dom_score)
+```
+
+The Shapiro--Wilk test returned a *W* statistic of 0.979 with a corresponding *p*-value of 0.36. These results indicate that the null hypothesis (*H*~0~) cannot be rejected, meaning the dominance scores do not significantly deviate from normality. Therefore, the distribution of BLP dominance scores can reasonably be treated as normal for the purposes of subsequent statistical modeling.
+
+## Dominance Score Normality Visualization
+
+This section visualizes the distribution of BLP dominance scores to complement the Shapiro--Wilk normality test. A histogram and a Q--Q plot are generated to assess whether the data plausibly follow a normal distribution. The histogram overlays a density curve to provide a visual sense of the distribution's shape, while the Q--Q plot compares the sample quantiles to the theoretical quantiles of a normal distribution. These plots enable visual confirmation of normality alongside formal statistical testing.
+
+The visualizations are produced using [`ggplot2`](https://ggplot2.tidyverse.org/) (Wickham, 2016) for plotting and [`patchwork`](https://patchwork.data-imaginist.com/) (Pedersen, 2020) for arranging the plots side by side.
+
+Note: Figures will be saved in the folder called `images/` in the working directory. If not such folder exists, one will be created.
+
+```{r normality-visualization}
+# Set bin width for histogram
+binwidth <- 20
+
+# Create histogram of dominance scores
+hist_plot <- blp_df %>%
+  ggplot(aes(x = dom_score)) +
+  geom_histogram(binwidth = binwidth, 
+                 fill = "white", color = "black", alpha = 0.8) +
+  geom_density(aes(y = after_stat(count) * binwidth), 
+               color = "black", linetype = "solid", size = 0.7) +
+  labs(title = "Histogram of Dominance Scores",
+       x = "Dominance Score",
+       y = "Count") +
+  theme_minimal(base_family = "serif") +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 10),
+    axis.title = element_text(size = 8),
+    axis.text = element_text(size = 8),
+    panel.grid.minor = element_blank()
+  )
+
+# Create Q-Q plot of dominance scores
+qq_plot <- blp_df %>%
+  ggplot(aes(sample = dom_score)) +
+  stat_qq(geom = "point", shape = 21, fill = "white", color = "black", size = 2, alpha = 0.8) +
+  stat_qq_line(color = "black", linetype = "dashed", size = 0.7) +
+  labs(title = "Q-Q Plot of Dominance Scores",
+       x = "Theoretical Quantiles",
+       y = "Observed Quantiles") +
+  theme_minimal(base_family = "serif") +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 10),
+    axis.title = element_text(size = 8),
+    axis.text = element_text(size = 8),
+    panel.grid.minor = element_blank()
+  )
+
+# Combine histogram and Q-Q plot side by side with bold serif panel labels
+final_plot <- hist_plot + qq_plot + 
+  plot_annotation(
+    tag_levels = 'A',
+    theme = theme(
+      text = element_text(family = "serif"),
+      plot.tag = element_text(family = "serif", face = "bold", size = 12)
+    )
+  )
+
+# Print combined plot
+final_plot
+
+# Save image of plots to local machine (directory: "images/")
+ggsave("images/dom_score_normality.pdf",
+       plot = final_plot,
+       width = 12,
+       height = 5,
+       units = "cm",
+       dpi = 600)
+```
+
+The histogram and Q--Q plot show only minor deviations from a perfectly normal distribution. Overall, the dominance scores closely approximate normality, supporting the results of the Shapiro--Wilk test.
+
+## VOT Descriptive Statistics
+
+This section provides descriptive statistics for the VOT data prior to running inferential models. Using [`dplyr`](https://dplyr.tidyverse.org/) (Wickham et al., 2023), the data are grouped by **language** and **stop consonant** categories to calculate summary measures including mean VOT, standard deviation, number of tokens, standard error, and minimum and maximum values. These descriptive statistics offer a clear overview of central tendency, variability, and range, and serve as a baseline for interpreting subsequent mixed-effects regression models.
+
+```{r descriptive-statistics}
+# Calculate descriptive statistics for VOT production data
+vot_stats_df <- vot_df %>%
+  group_by(language, stop) %>%
+  summarise(
+    mean_VOT = mean(vot_dur, na.rm = TRUE),   # Compute mean VOT
+    sd       = sd(vot_dur, na.rm = TRUE),     # Compute standard deviation
+    n        = n(),                           # Count number of tokens
+    se       = sd / sqrt(n),                  # Compute standard error
+    min      = min(vot_dur, na.rm = TRUE),    # Compute minimum VOT
+    max      = max(vot_dur, na.rm = TRUE)     # Compute maximum VOT
+  ) %>%
+  mutate(across(where(is.numeric), ~round(.x, 3)))
+
+# Display descriptive statistics as a formatted table
+knitr::kable(vot_stats_df)
+```
+
+## VOT Distribution Visualization
+
+This section visualizes the distribution of VOT values across place of articulation (POA) for Spanish and English. Using [`ggplot2`](https://ggplot2.tidyverse.org/) (Wickham, 2016), boxplots are generated with POA on the x-axis and VOT in milliseconds on the y-axis, with separate boxes filled by language. The y-axis is restricted to the 0--120 ms range for clarity.
+
+```{r vot_boxplot}
+# Create boxplot of VOT by stop and language
+ggplot(vot_df, aes(
+  x = factor(stop, levels = c("p", "t", "k")),
+  y = vot_dur,
+  fill = factor(language, levels = c("spanish", "english"))
+  )
+) +
+  geom_boxplot(
+    outlier.shape = NA,
+    alpha = 0.8,
+    color = "black"
+  ) +
+  labs(
+    title = "Distribution of VOT across POA",
+    x = "POA",
+    y = "VOT (ms)",
+    fill = "Language"
+  ) +
+  scale_y_continuous(limits = c(0, 120)) +   # Restrict y-axis range
+  scale_x_discrete(labels = c("/p/", "/t/", "/k/")) +
+  scale_fill_manual(
+    values = c("white", "grey70"),   # Spanish = white, English = grey
+    labels = c("Spanish", "English")
+  ) +
+  theme_minimal(base_family = "serif") +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 10),
+    axis.title = element_text(size = 8),
+    axis.text = element_text(size = 8),
+    legend.title = element_text(size = 8),
+    legend.text = element_text(size = 8),
+    panel.grid.minor = element_blank()
+  )
+
+# Save image of plots to local machine (directory: "images/")
+ggsave("images/stop_vot_box.pdf",
+       width = 12,
+       height = 5,
+       units = "cm",
+       dpi = 600)
+```
+
+# Statistical Analysis
+
+## Mixed-effect Maximal Model
+
+This section fits a **maximal linear mixed-effects model** to the VOT data to evaluate whether /t/ deviates from the expected linear increase across places of articulation (/p/ → /t/ → /k/) in Spanish and English. The dependent variable is VOT duration (`vot_dur`), modeled as a function of stop consonant, language, and their interaction. To account for repeated measures and variability across speakers and lexical items, the model includes random intercepts and slopes for the interaction of stop and language by both subject and word.
+
+The model is estimated using [`lme4`](https://cran.r-project.org/package=lme4) (Bates et al., 2015) via the `lmer()` function, and *p*-values for fixed effects are obtained using [`lmerTest`](https://cran.r-project.org/package=lmerTest) (Kuznetsova et al., 2017).
+
+```{r maximal-model}
+# Fit maximal linear mixed-effects model to VOT data
+max_mod_t <- lmer(
+  vot_dur ~ stop * language +           # Include fixed effects: stop, language, and interaction
+    (1 + stop * language | subject) +   # Add random intercepts and slopes by subject
+    (1 + stop * language | word),       # Add random intercepts and slopes by word
+  data = vot_df,
+  REML = FALSE                          # Use maximum likelihood estimation
+)
+
+# Display model summary with p-values from lmerTest
+summary(max_mod_t)
+```
+
+## Singularity Check
+
+This section evaluates whether the maximal model suffers from singularity or convergence issues using the `isSingular()` function from [`lme4`](https://cran.r-project.org/package=lme4) (Bates et al., 2015). A singular fit occurs when one or more random-effects variances are estimated to be zero or near zero, indicating an overparameterized model. If the function returns `TRUE`, it signals the need for simplification of the random-effects structure (i.e., removing factors or factor combinations).
+
+```{r singularity-check}
+# Check for singular fit in the maximal mixed-effects model
+isSingular(max_mod_t)
+```
+
+The singularity check returned `TRUE`, indicating that the maximal model is overparameterized and that simplification of the random-effects structure is warranted.
+
+## Parsimonious Model Selection with Buildmer
+
+This section addresses the singularity issue detected in the maximal model by using [`buildmer`](https://cran.r-project.org/package=buildmer) (Voeten, 2020) to perform principled stepwise simplification of the random-effects structure. The `buildmer` algorithm evaluates which components of the model meaningfully contribute to fit, systematically removing redundant terms using likelihood ratio tests (LRT). This ensures a parsimonious model specification that balances explanatory power with stability and interpretability.
+
+```{r buildmer-simplification}
+# Define maximal model formula with fixed and random effects
+form <- vot_dur ~ stop * language + 
+        (1 + stop * language | subject) +   # Include random intercepts and slopes by subject
+        (1 + stop * language | word)        # Include random intercepts and slopes by word
+
+# Run buildmer to simplify model using backward selection and LRT criterion
+mod_build <- buildmer(
+  form, 
+  data = vot_df,
+  buildmerControl = buildmerControl(
+    direction = 'backward',   # Remove terms step by step
+    crit = 'LRT'              # Use likelihood ratio test for simplification
+  )
+)
+
+# Display the formula of the simplified model
+formula(mod_build)
+
+# Display summary of the final simplified model
+summary(mod_build)
+```
+
+### Parsimonious Model Post-hoc
+
+Given that the parsimonious model reported a significant interaction between stop category and language, we conducted a post-hoc analysis using the [`emmeans`](https://cran.r-project.org/web/packages/emmeans/index.html) package. Estimated marginal means (EMMs) were obtained for each stop category in both English and Spanish, and pairwise contrasts were performed to examine language effects within each stop, as well as stop effects within each language. Multiple comparisons were adjusted using the Bonferroni method. These post-hoc comparisons allow us to determine which specific stop categories drive the significant interaction and whether the cross-linguistic differences are uniform across places of articulation or concentrated in particular contrasts.
+
+```{r parsimonious-post-hoc}
+# Create variable for parsimonious model
+pars_mod <- lmer(vot_dur ~ stop * language + (1 + stop | subject), data = vot_df)
+summary(pars_mod)
+
+# Estimate marginal means for parsimonious model
+emm <- emmeans(pars_mod, ~ stop * language)
+
+# Provide Pairwise comparisons within language (differences between stops)
+pairs(emm, by = "language", adjust = "bonferroni")
+```
+
+## Interval Asymmetry Index (IAI)
+
+The **Interval Asymmetry Index (IAI)** is a novel metric designed to quantify deviations of a given category along a spectrum where three labels are expected to be equally spaced. In this study, VOT is expected to increase linearly across stop categories (/p/ → /t/ → /k/).
+
+For each speaker and language, the algorithm first calculates the mean VOT per stop category:
+
+\begin{equation}
+    \bar{v}_{ij} = \frac{1}{n_{ij}} \sum\limits_{k=1}^{n_{ij}}n_{ijk}
+    \label{eq:mean}
+\end{equation}
+
+It then computes the IAI:
+
+\begin{equation}
+    IAI = \frac{(\bar{v}_{i3} - \bar{v}_{i2}) - (\bar{v}_{i2} - \bar{v}_{i1})}{\bar{v}_{i3} - \bar{v}_{i1}}
+    \label{eq:IAI}
+\end{equation}
+
+An IAI of **0** indicates that /t/ lies at the expected midpoint between /p/ and /k/, a **positive IAI** indicates that /t/ has a shorter-than-expected VOT, and a **negative IAI** indicates a longer-than-expected VOT. This continuous measure allows for quantifying subtle deviations from the canonical place-of-articulation hierarchy per speaker, which can be further analyzed with linguistic and sociodemographic variables, shedding light on the factors that may influence speech behaviors.
+
+```{r iai-implementation}
+# Compute mean VOT per stop category per speaker and language
+vij_df <- vot_df %>%
+  group_by(subject, language, stop) %>%
+  summarise(vij = mean(vot_dur)) %>%   # Compute mean VOT per POA
+  as.data.frame()
+
+# Restructure data to create per-speaker/per-language values for /p/, /t/, /k/ and compute IAI
+iai_df <- vij_df %>%
+  group_by(subject, language) %>%
+  reframe(
+    vi_p = vij[stop == "p"],   # Assign mean VOT for /p/
+    vi_t = vij[stop == "t"],   # Assign mean VOT for /t/
+    vi_k = vij[stop == "k"]    # Assign mean VOT for /k/
+  ) %>%
+  mutate(
+    iai = ((vi_k - vi_t) - (vi_t - vi_p)) / (vi_k - vi_p)  # Compute IAI
+  ) %>%
+  ungroup() %>% 
+  as.data.frame()
+
+# Summarize IAI distribution by language
+iai_stats_df <- iai_df %>%
+  group_by(language) %>%
+  summarise(
+    mean_iai = mean(iai),   # Compute mean IAI
+    SD       = sd(iai),     # Compute standard deviation
+    max      = max(iai),    # Compute maximum IAI
+    min      = min(iai)     # Compute minimum IAI
+  )
+
+# Display summary statistics as a formatted table
+knitr::kable(iai_stats_df)
+```
+
+## IAI Distribution Visualization
+
+This section visualizes the distribution of **Interval Asymmetry Index (IAI)** values across languages. Histograms display how speakers align with or deviate from the expected linear VOT progression. A vertical dashed line at 0 indicates the baseline where /t/ lies exactly at the predicted midpoint between /p/ and /k/. Separate panels for Spanish and English are generated, displaying language-specific trends in /t/ realization.
+
+The visualizations are created using [`ggplot2`](https://ggplot2.tidyverse.org/) (Wickham, 2016) for plotting.
+
+```{r iai-visualization}
+# Plot histogram of IAI values by language and add vertical line at 0
+ggplot(iai_df, aes(x = iai)) +
+  geom_histogram(binwidth = 0.5, color = "black", fill = "white", alpha = 0.8) + 
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") + 
+  facet_wrap(~ language, 
+             ncol = 2, 
+             labeller = labeller(language = c("english"="English",
+                                              "spanish"="Spanish"))) + 
+  labs(
+    title = "IAI Distribution per Language",
+    x = "Interval Asymmetry Index (IAI)",
+    y = "Count"
+  ) +
+  theme_minimal(base_family = "serif") +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 12),
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 8),
+    legend.position = "none",
+    panel.grid.minor = element_blank()
+  )
+
+# Save image of plots to local machine (directory: "images/")
+ggsave("images/iai_hist.pdf",
+       width = 12,
+       height = 5,
+       units = "cm",
+       dpi = 600)
+```
+
+## Mixed-Effects Model: Predicting IAI
+
+This section fits a linear mixed-effects model to predict the **Interval Asymmetry Index (IAI)** as a function of linguistic background and cultural identity variables. All numerical predictor variables--**dominance score** and **ages of learning English and Spanish**--are normalized (z-scored) prior to model fitting. Normalization ensures that predictors are on a comparable scale, which improves model convergence, stabilizes estimates, and allows for more accurate interpretation of effect sizes, particularly when interaction terms are included.
+
+Fixed effects include **L1**, normalized **dominance score**, normalized **ages of learning English** and **ages of learning Spanish** (and their interaction), and normalized **cultural identification with English** and **cultural identification with Spanish** (and their interaction). Random intercepts are included for **Language** and **Subject**. Due to the limited data set (120 observations total, one per language per speaker), a maximal random-effects structure was not feasible. Instead, a simplified model with random intercepts only was specified to ensure model convergence and stability.
+
+The model is estimated using [`lme4`](https://cran.r-project.org/package=lme4) (Bates et al., 2015) via `lmer()`, and *p*-values for fixed effects are obtained using [`lmerTest`](https://cran.r-project.org/package=lmerTest) (Kuznetsova et al., 2017).
+
+```{r mm-model-iai}
+# Merge IAI data with BLP data by subject
+merged_df <- merge(iai_df, blp_df, by = "subject")
+
+# Create L1 variable: assign "spa" if Spanish learned first, otherwise "eng"
+merged_df <- merged_df %>%
+  mutate(L1 = ifelse(age_learning_spa < age_learning_eng, "spa", "eng"))
+
+# Normalize numerical predictors: dominance score, age of learning, and cultural identification
+merged_df <- merged_df %>%
+  mutate(
+    dom_score_z = scale(dom_score),
+    age_learning_eng_z = scale(age_learning_eng),
+    age_learning_spa_z = scale(age_learning_spa),
+    identify_eng_culture_z = scale(identify_eng_culture),
+    identify_spa_culture_z = scale(identify_spa_culture)
+  )
+
+# Fit linear mixed-effects model predicting IAI with normalized predictors
+mm_mod_iai <- lmer(
+  iai ~ L1 + dom_score_z + 
+    age_learning_eng_z * age_learning_spa_z + 
+    identify_eng_culture_z * identify_spa_culture_z + 
+    (1 | language) + 
+    (1 | subject),
+  data = merged_df
+)
+
+# Display model summary with p-values from lmerTest
+summary(mm_mod_iai)
+```
+
+### IAI Model Post-hoc
+
+Because the model revealed a significant interaction between identification with English culture and identification with Spanish culture ($\beta$ = 0.25, \textit{p} = .015), a post-hoc analysis was conducted to clarify the nature of this effect. Specifically, we examined how varying levels of identification with one cultural group modulated the relationship between identification with the other and IAI scores. This allowed us to test whether bicultural identification produced an amplifying effect, whereby simultaneous high identification with both cultures predicted stronger IAI outcomes than would be expected from the sum of each effect in isolation.
+
+The post-hoc analysis was performed in R using the [`emmeans`](https://cran.r-project.org/web/packages/emmeans/index.html) package (Lenth, 2025). Estimated marginal means were generated for combinations of English and Spanish cultural identification, defined at representative values (−1 SD, mean, +1 SD). Pairwise contrasts were then computed to assess whether increases in IAI differed significantly across cultural identification profiles. The code below illustrates the procedure:
+
+```{r IAI-post-hoc}
+# Generate estimated marginal means for combinations of cultural identities
+emm_culture <- emmeans(mm_mod_iai, 
+                       ~ identify_eng_culture_z * identify_spa_culture_z,
+                       at = list(identify_eng_culture_z = c(-1, 0, 1),
+                                 identify_spa_culture_z = c(-1, 0, 1)))
+
+# Display estimated means
+emm_culture
+
+# Pairwise contrasts to compare effects across cultural profiles
+pairs(emm_culture, adjust = "bonferroni")
+```
+
+# Reproducibility Information
+
+This section lists the versions of R and RStudio, the programming language and the integrated development environment used for the creation of this documentation file. It also provides the versions of all R packages used in the analysis, ensuring reproducibility of the results presented here. The data can be found in the directory called `data/`.
+
+```{r package-versions}
+# Display working environment versions
+cat("Working Environment Versions", "\n")
+cat("Version of R:", as.character(getRversion()), "\n")
+cat("Version of RStudio:", as.character(rstudioapi::versionInfo()$version), "\n\n")
+
+# Display package versions
+cat("Package Versions", "\n")
+cat("`tidyverse` package version:", as.character(packageVersion("tidyverse")), "\n")
+cat("`patchwork` package version:", as.character(packageVersion("patchwork")), "\n")
+cat("`showtext` package version:", as.character(packageVersion("showtext")), "\n")
+cat("`lme4` package version:", as.character(packageVersion("lme4")), "\n")
+cat("`lmerTest` package version:", as.character(packageVersion("lmerTest")), "\n")
+cat("`buildmer` package version:", as.character(packageVersion("buildmer")), "\n")
+```
+
+# References
+
+-   Barr, D. J., Levy, R., Scheepers, C., & Tily, H. J. (2013). Random effects structure for confirmatory hypothesis testing: Keep it maximal. *Journal of Memory and Language, 68*(3), 255–278. <https://doi.org/10.1016/j.jml.2012.11.001>
+-   Bates, D., Mächler, M., Bolker, B., & Walker, S. (2015). Fitting linear mixed-effects models using lme4. *Journal of Statistical Software, 67*(1), 1–48. <https://doi.org/10.18637/jss.v067.i01>
+-   Birdsong, D., Gertken, L. M., & Amengual, M. (2012). Bilingual Language Profile: An easy-to-use instrument to assess bilingualism. *Cognitive Linguistics, 23*(3), 381–410. <https://doi.org/10.1515/cogl.2012.011>
+-   Bullock, B. E., & Toribio, A. J. (Eds.). (2009). *The Cambridge Handbook of Linguistic Code-switching*. Cambridge University Press.
+-   Erker, D. (2022). How social salience can illuminate the outcomes of linguistic contact: Data from Spanish in Boston. In G. R. Guy & K. Beaman (Eds.), *The coherence of linguistic communities: Orderly heterogeneity and social meaning* (pp. 145–162). Routledge.
+-   Flege, J. E., & Eefting, W. (1987). Cross-language switching in stop consonant perception and production by Dutch speakers of English. *Speech Communication, 6*(3), 185–202. [https://doi.org/10.1016/0167-6393(87)90025-2](https://doi.org/10.1016/0167-6393(87)90025-2){.uri}
+-   Kuznetsova, A., Brockhoff, P. B., & Christensen, R. H. B. (2017). lmerTest package: Tests in linear mixed effects models. *Journal of Statistical Software, 82*(13), 1–26. <https://doi.org/10.18637/jss.v082.i13>
+-   Lenth, R. V. (2025). *emmeans: Estimated Marginal Means, aka Least-Squares Means* (R package version 1.11.2). Retrieved from <https://CRAN.R-project.org/package=emmeans>
+-   Pedersen, T. L. (2020). *patchwork: The composer of ggplots* (R package version 1.1.2). <https://patchwork.data-imaginist.com/>
+-   Podesva, R. J. (2011). Salience and the social meaning of declarative contours: Three case studies of gay professionals. *Journal of English Linguistics, 39*(3), 233–264. <https://doi.org/10.1177/0075424211405161>
+-   R Core Team (2025). *R: A Language and Environment for Statistical Computing*. R Foundation for Statistical Computing, Vienna, Austria. <https://www.R-project.org/>
+-   Voeten, C. C. (2020). *buildmer: Stepwise elimination and term reordering for mixed-effects regression* (R package version 1.8). <https://cran.r-project.org/package=buildmer>
+-   Wickham, H. (2016). *ggplot2: Elegant graphics for data analysis*. Springer.
+-   Wickham, H., François, R., Henry, L., & Müller, K. (2023). *dplyr: A Grammar of Data Manipulation* (R package version 1.1.1). <https://dplyr.tidyverse.org/>
